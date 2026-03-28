@@ -37,7 +37,7 @@ from botocore.useragent import register_feature_id
 from botocore.utils import (
     conditionally_calculate_md5,
     determine_content_length,
-    get_checksum_header_algorithms,
+    get_checksum_algorithm_headers,
     has_checksum_header,
 )
 
@@ -472,16 +472,22 @@ def _apply_request_trailer_checksum(request):
     headers["X-Amz-Trailer"] = location_name
 
     content_length = determine_content_length(body)
+    if content_length is None and "Content-Length" in headers:
+        # determine_content_length() cannot resolve the length of non-seekable
+        # bodies, but the caller may have set Content-Length explicitly. Reuse
+        # that value for X-Amz-Decoded-Content-Length before the header is
+        # removed for chunked transfer encoding.
+        content_length = int(headers["Content-Length"])
     if content_length is not None:
         # Send the decoded content length if we can determine it. Some
         # services such as S3 may require the decoded content length
         headers["X-Amz-Decoded-Content-Length"] = str(content_length)
 
-        if "Content-Length" in headers:
-            del headers["Content-Length"]
-            logger.debug(
-                "Removing the Content-Length header since 'chunked' is specified for Transfer-Encoding."
-            )
+    if "Content-Length" in headers:
+        del headers["Content-Length"]
+        logger.debug(
+            "Removing the Content-Length header since 'chunked' is specified for Transfer-Encoding."
+        )
 
     if isinstance(body, (bytes, bytearray)):
         body = io.BytesIO(body)
@@ -495,9 +501,16 @@ def _apply_request_trailer_checksum(request):
 
 def _register_checksum_feature_ids(request):
     """Register feature IDs for checksum algorithms used in the request."""
-    if algorithm_list := get_checksum_header_algorithms(request):
-        for algorithm_name in algorithm_list:
-            _register_checksum_algorithm_feature_id(algorithm_name)
+    if algorithm_headers := get_checksum_algorithm_headers(request):
+        for header in algorithm_headers:
+            header = header.upper()
+            if header not in (
+                "X-AMZ-CHECKSUM-ALGORITHM",
+                "X-AMZ-CHECKSUM-MODE",
+                "X-AMZ-CHECKSUM-TYPE",
+            ):
+                algorithm_name = header.removeprefix("X-AMZ-CHECKSUM-")
+                _register_checksum_algorithm_feature_id(algorithm_name)
         return
     # If no checksum header exists yet, check the resolved context for
     # an algorithm that will be applied later by apply_request_checksum.

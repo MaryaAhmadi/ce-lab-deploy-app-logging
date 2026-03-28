@@ -1,11 +1,11 @@
 import structlog
+import logging
 from flask import Flask, request
 import uuid
-import logging
 
-# configure logging to file
+# تنظیم logging برای فایل
 logging.basicConfig(
-    filename="application.log",
+    filename='application.log',
     level=logging.INFO,
     format="%(message)s"
 )
@@ -20,13 +20,12 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
-
 app = Flask(__name__)
 
 @app.route('/')
 def index():
     correlation_id = request.headers.get('X-Correlation-ID', str(uuid.uuid4()))
-
+    
     logger.info(
         "request_received",
         correlation_id=correlation_id,
@@ -34,7 +33,7 @@ def index():
         method=request.method,
         ip=request.remote_addr
     )
-
+    
     return {"message": "Hello World", "correlation_id": correlation_id}
 
 @app.route('/health')
@@ -46,7 +45,7 @@ def health():
 def create_order():
     correlation_id = str(uuid.uuid4())
     data = request.get_json()
-
+    
     logger.info(
         "order_created",
         correlation_id=correlation_id,
@@ -55,7 +54,7 @@ def create_order():
         items=data.get('items', 0),
         user_id=data.get('user_id')
     )
-
+    
     return {"status": "created", "correlation_id": correlation_id}
 
 if __name__ == '__main__':

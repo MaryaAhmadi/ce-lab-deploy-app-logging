@@ -1,0 +1,3 @@
+Log Group Name: /aws/application/api
+Log Stream Name: {instance_id}
+Region: us-east-1
